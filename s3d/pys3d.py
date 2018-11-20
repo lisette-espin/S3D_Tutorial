@@ -1,7 +1,9 @@
 import pandas as pd
 from contextlib import redirect_stdout
 from joblib import Parallel, delayed, cpu_count
-import subprocess, os, shutil, time, utils, io, sys, warnings
+import subprocess, os, shutil, time, io, sys, warnings
+from s3d import utils
+import os
 
 class PYS3D(object):
     ''' a wrapper function to run s3d in python
@@ -9,7 +11,7 @@ class PYS3D(object):
     '''
     def __init__(self,
                  data_name,
-                 data_path='../splitted_data/',
+                 data_path='splitted_data/',
                  model_path='models/',
                  prediction_path='predictions/',
                  classification_flag=True,
@@ -50,17 +52,17 @@ class PYS3D(object):
         self.inner_num_folds = self.num_folds - 1
 
         ## create a temporary folder for inner cross validation
-        self.tmp_path = './tmp/{}/'.format(self.data_name)
+        self.tmp_path = 'tmp/{}/'.format(self.data_name)
         if not os.path.exists(self.tmp_path):
             #shutil.rmtree(self.tmp_path)
-            os.mkdir(self.tmp_path)
+            os.makedirs(self.tmp_path)
 
         ## create a folder with similar structure for hyperparameter searching
-        self.cv_path = './cv/{}/'.format(self.data_name)
+        self.cv_path = 'cv/{}/'.format(self.data_name)
         if not os.path.exists(self.cv_path):
             #os.rmdir(self.cv_path)
             #shutil.rmtree(self.cv_path)
-            os.mkdir(self.cv_path)
+            os.makedirs(self.cv_path)
 
         ## for both cv and tmp, create subfolders for individual folds
         for fold_index in range(self.num_folds):
@@ -68,7 +70,7 @@ class PYS3D(object):
             ## remove it, if exist
             if not os.path.exists(tmp_path):
                 ## create it
-                os.mkdir(tmp_path)
+                os.makedirs(tmp_path)
             ## create a cv folder for each fold
             #cv_path = self.cv_path + str(fold_index) + '/'
             #if not os.path.exists(cv_path):
@@ -78,7 +80,7 @@ class PYS3D(object):
         print('data will be loaded from {}'.format(self.data_path))
         print('built models will be saved to {}'.format(self.model_path))
         print('predictions will be saved to {}'.format(self.prediction_path))
-        print('temporary subfolders in ', './tmp/{}'.format(self.data_name))
+        print('temporary subfolders in ', 'tmp/{}'.format(self.data_name))
         print('...done initializing...\n')
 
 
@@ -107,7 +109,7 @@ class PYS3D(object):
         if not os.path.exists(train_model_path):
             os.makedirs(train_model_path)
 
-        c = './train -infile:{0} -outfolder:{1} -lambda:{2} -ycol:0'.format(train_data_path,
+        c = './s3d/train -infile:{0} -outfolder:{1} -lambda:{2} -ycol:0'.format(train_data_path,
                                                                             train_model_path,
                                                                             lambda_)
         c += ' -start_skip_rows:{} -end_skip_rows:{}'.format(start_skip_rows, end_skip_rows)
@@ -115,7 +117,7 @@ class PYS3D(object):
             c += ' -max_features:{}'.format(max_features)
 
         #print('fitting s3d with', train_data_path)
-        #print('command:', c)
+        print('command:', c)
 
         ## catch the output and save to a log file in the `outfolder`
         process = subprocess.Popen(c.split(), stdout=subprocess.PIPE)
@@ -175,7 +177,7 @@ class PYS3D(object):
 
         ## perform prediction based on each number of features
         for n_f in range(1, max_features+1):
-            c = './predict_expectations -datafile:{} -infolder:{} -outfolder:{}'.format(test_data_path,
+            c = './s3d/predict_expectations -datafile:{} -infolder:{} -outfolder:{}'.format(test_data_path,
                                                                                         train_model_path,
                                                                                         prediction_path
                                                                                        )
@@ -366,8 +368,7 @@ class PYS3D(object):
             same as _inner_cross_validation_fold, but a grid of parameters are given (param_grid)
             does cross validation on all of them
             the final outcome is the validation performance of all paramter settings
-        '''
-
+        '''        
         stringio = io.StringIO()
         with redirect_stdout(stringio):
             ## capture everything and redirect into a file
@@ -490,7 +491,7 @@ class PYS3D(object):
 
         # (i) read in data
         # read in the number of datapoints in each group
-        with open(subfolder+'N_tree.csv', 'r') as f:
+        with open(os.path.join(subfolder,'N_tree.csv'), 'r') as f:
             for row, line in enumerate(f):
                 if row == max_features:
                     ## number of datapoints in each group
@@ -500,7 +501,7 @@ class PYS3D(object):
         num_tot = num_s.sum()
         #print('num_tot:', num_tot)
         # read in the average value of y per group
-        with open(subfolder+'ybar_tree.csv', 'r') as f:
+        with open(os.path.join(subfolder,'ybar_tree.csv'), 'r') as f:
             for row, line in enumerate(f):
                 if row == 0:
                     ## global y-bar
@@ -530,3 +531,6 @@ class PYS3D(object):
         disc_thresh = ybar_sorted[num_ones_thres]
 
         return disc_thresh
+    
+    def get_features(self, fold_id):
+        return pd.read_csv(os.path.join(self.model_path, str(fold_id), 'levels.csv')).best_feature.values

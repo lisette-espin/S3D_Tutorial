@@ -1,8 +1,10 @@
 import scipy as sp
 import pandas as pd
+import numpy as np
 import networkx as nx
 import palettable, warnings
 import seaborn as sns
+import itertools
 from matplotlib import gridspec
 from matplotlib import pyplot as plt
 from matplotlib.colors import ListedColormap
@@ -13,17 +15,35 @@ sns.set_context("paper", font_scale=2)
 
 def obtain_metric_classification(y_true, y_pred, y_score):
     acc = accuracy_score(y_true, y_pred)
-    f1_binary = f1_score(y_true, y_pred, average='binary')
+    try:
+        f1_binary = f1_score(y_true, y_pred, average='binary')
+    except:
+        f1_binary = None
+    try:
+        f1_weighted = f1_score(y_true, y_pred, average='weighted')
+    except:
+        f1_weighted = None    
     f1_macro = f1_score(y_true, y_pred, average='macro')
     f1_micro = f1_score(y_true, y_pred, average='micro')
     r2 = r2_score(y_true, y_pred)
 
-    auc_macro = roc_auc_score(y_true, y_score)
-    auc_micro = roc_auc_score(y_true, y_score, 'micro')
-
+    try:
+        auc_macro = roc_auc_score(y_true, y_score, 'macro')
+    except:
+        auc_macro = None
+    try:
+        auc_micro = roc_auc_score(y_true, y_score, 'micro')
+    except:
+        auc_micro = None
+    try:
+        auc_weighted = roc_auc_score(y_true, y_score, 'weighted')
+    except:
+        auc_weighted = None
+        
     d = {'accuracy': acc, 'auc_macro': auc_macro,
-         'auc_micro': auc_micro, 'f1_binary':f1_binary,
-         'f1_macro': f1_macro, 'f1_micro': f1_micro, 'r2': r2}
+         'auc_micro': auc_micro, 'auc_weighted':auc_weighted,
+         'f1_binary':f1_binary,
+         'f1_macro': f1_macro, 'f1_micro': f1_micro, 'f1_weighted':f1_weighted, 'r2': r2}
     return pd.Series(d)
 
 def obtain_metric_regression(y_true, y_pred):
@@ -150,10 +170,19 @@ def visualize_s3d_steps(model_folder, figsize=(8,7), color_list=None, bar_alpha=
     ## read in the selected ones
     selected_feature_arr = pd.read_csv(model_folder+'levels.csv')['best_feature'].values
     df = df.T.sort_values(0).T
+    
+    init = df.columns
+    toremove = []
+    for c in init:
+        if df[c].sum() == 0:
+            toremove.append(c)
+    df.drop(columns=toremove, axis=1, inplace=True)
+    if len(init) != len(df.columns):
+        warnings.warn('{} columns dropped (zero information gain)'.format(len(init) - len(df.columns)))
+        
     if max_features is not None:
         if max_features < selected_feature_arr.size:
-            warnings.warn('max_features auto set to the size of selected features\n(change from {} to {})'.format(max_features,
-                                                                                                                  selected_feature_arr.size))
+            warnings.warn('max_features auto set to the size of selected features\n(change from {} to {})'.format(max_features,selected_feature_arr.size))
             max_features = selected_feature_arr.size
         elif max_features > df.shape[1]:
             warnings.warn('max_features ({}) corrected to the total number of features ({})'.format(max_features, df.shape[1]))
@@ -518,3 +547,35 @@ def find_best_param(performance_file, validation_metric):
         param_df.append([s_ver, best_lambda_, best_n_f, best_value, validation_metric])
     param_df = pd.DataFrame(param_df, columns=['split_version', 'lambda_', 'num_features', 'best_value', 'metric'])
     return param_df
+
+def plot_confusion_matrix(cm, classes,
+                          normalize=False,
+                          title='Confusion matrix',
+                          cmap=plt.cm.Blues):
+    """
+    This function prints and plots the confusion matrix.
+    Normalization can be applied by setting `normalize=True`.
+    """
+    if normalize:
+        cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
+        print("Normalized confusion matrix")
+    else:
+        print('Confusion matrix, without normalization')
+
+    plt.imshow(cm, interpolation='nearest', cmap=cmap)
+    plt.title(title)
+    plt.colorbar()
+    tick_marks = np.arange(len(classes))
+    plt.xticks(tick_marks, classes, rotation=45)
+    plt.yticks(tick_marks, classes)
+
+    fmt = '.2f' if normalize else 'd'
+    thresh = cm.max() / 2.
+    for i, j in itertools.product(range(cm.shape[0]), range(cm.shape[1])):
+        plt.text(j, i, format(cm[i, j], fmt),
+                 horizontalalignment="center",
+                 color="white" if cm[i, j] > thresh else "black")
+
+    plt.tight_layout()
+    plt.ylabel('True label')
+    plt.xlabel('Predicted label')
