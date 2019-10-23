@@ -42,7 +42,7 @@ pandocfilters==1.4.2
 patsy==0.5.0
 pexpect==4.6.0
 pickleshare==0.7.4
-Pillow==6.2.0
+Pillow==6.2.1
 powerlaw==1.4.3
 progressbar33==2.4
 prometheus-client==0.3.1
