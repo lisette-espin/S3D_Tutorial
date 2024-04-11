@@ -9,7 +9,7 @@ entrypoints==0.2.3
 glyph==2.6.5b0
 graphviz==0.9
 html5lib==1.0.1
-idna==2.7
+idna==3.7
 ipykernel==4.8.2
 ipyparallel==6.2.2
 ipython==8.10.0
